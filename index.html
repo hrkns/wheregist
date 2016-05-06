@@ -1,0 +1,184 @@
+<html>
+	<head>
+		<meta charset = "utf-8">
+		<script type="text/javascript">
+			// Your Client ID can be retrieved from your project in the Google
+			// Developer Console, https://console.developers.google.com
+			var CLIENT_ID = '541936993507-at9fnk6glbbr5au8qrlb8a7goc9rn8nn.apps.googleusercontent.com';
+
+			var SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
+
+			/**
+			 * Check if current user has authorized this application.
+			 */
+			function checkAuth() {
+				gapi.auth.authorize(
+					{
+						'client_id': CLIENT_ID,
+						'scope': SCOPES.join(' '),
+						'immediate': true
+					}, handleAuthResult);
+			}
+
+			/**
+			 * Handle response from authorization server.
+			 *
+			 * @param {Object} authResult Authorization result.
+			 */
+			function handleAuthResult(authResult) {
+				var authorizeDiv = document.getElementById('authorize-div');
+				if (authResult && !authResult.error) {
+					// Hide auth UI, then load client library.
+					authorizeDiv.style.display = 'none';
+					loadGmailApi();
+				} else {
+					// Show auth UI, allowing the user to initiate authorization by
+					// clicking authorize button.
+					authorizeDiv.style.display = 'inline';
+				}
+			}
+
+			/**
+			 * Initiate auth flow in response to user clicking authorize button.
+			 *
+			 * @param {Event} event Button click event.
+			 */
+			function handleAuthClick(event) {
+				gapi.auth.authorize(
+					{client_id: CLIENT_ID, scope: SCOPES, immediate: false},
+					handleAuthResult);
+				return false;
+			}
+
+			/**
+			 * Load Gmail API client library. List labels once client library
+			 * is loaded.
+			 */
+			function loadGmailApi() {
+				gapi.client.load('gmail', 'v1', getMessages);
+			}
+
+			var decodeBase64 = function(s) {
+			    var e={},i,b=0,c,x,l=0,a,r='',w=String.fromCharCode,L=s.length;
+			    var A="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+			    for(i=0;i<64;i++){e[A.charAt(i)]=i;}
+			    for(x=0;x<L;x++){
+			        c=e[s.charAt(x)];b=(b<<6)+c;l+=6;
+			        while(l>=8){((a=(b>>>(l-=8))&0xff)||(x<(L-2)))&&(r+=w(a));}
+			    }
+			    return r;
+			};
+
+			var origins = Array(), final = Array();
+			var completed = 0;
+
+			function extractEmails (text){
+				return text.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/gi);
+			}
+
+			function getMessages(){
+				var userId = "me";
+				var query = "";
+				var emailContent = document.getElementById("email_content");
+				var getPageOfMessages = function(request, result) {
+					request.execute(function(resp) {
+						result = result.concat(resp.messages);
+						var nextPageToken = resp.nextPageToken;
+						if (nextPageToken && false) {
+							document.getElementById("status_loaded_emails").innerHTML = "Got " + result.length + " emails...";
+							request = gapi.client.gmail.users.messages.list({
+								'userId': userId,
+								'pageToken': nextPageToken,
+								'q': query
+							});
+							getPageOfMessages(request, result);
+						} else {
+							document.getElementById("status_loaded_emails").innerHTML = "Got " + result.length + " emails!!!";
+							var n = result.length, m, l;
+							var ul = document.getElementById("output");
+							for(var i = 0; i < n; i++){
+								var li = document.createElement("li");
+								li.innerHTML = "<a href = 'javascript:;'>"+result[i].id+"</a>";
+								li.setAttribute("data-val", result[i].id);
+								//li.onclick = function(){
+									gapi.client.gmail.users.messages.get({
+										'userId': "me",
+										'id': li.getAttribute("data-val")
+									}).execute(function(response){
+										completed++;
+										/*
+										var n = response.payload.parts?response.payload.parts.length:0;
+										var s = "";
+										for(var i = 0; i < n; i++){
+											//console.log(response.payload.parts[i].body.data.replace(/\s/g, ''));
+											//s+=atob(response.payload.parts[i].body.data.replace(/\s/g, ''));
+											s+=(response.payload.parts[i].body.data?decodeBase64(response.payload.parts[i].body.data):"");
+										}
+										emailContent.innerHTML = s;
+										*/
+										m = 0;
+										l = response.payload.headers.length;
+										while(m < l && response.payload.headers[m].name.toLowerCase().trim() != "from")
+											m++;
+										if(m < l){
+											origins.push(response.payload.headers[m].value);
+										}
+										if(completed == result.length){
+											m = 0;
+											var v;
+											l = origins.length;
+											while(m < l){
+												v = extractEmails(origins[m++]);
+												if(v.length > 0 && final.indexOf(v[0].substr(v[0].indexOf("@")+1)) == -1){
+													final.push(v[0].substr(v[0].indexOf("@")+1));
+												}
+											}
+											console.log(final);
+										}
+									});
+								//}
+
+								ul.appendChild(li);
+							}
+						}
+					});
+				};
+				var initialRequest = gapi.client.gmail.users.messages.list({
+					'userId': userId,
+					'q': query
+				});
+				getPageOfMessages(initialRequest, []);
+			}
+
+		</script>
+		<script src="https://apis.google.com/js/client.js?onload=checkAuth">
+		</script>
+	</head>
+	<body>
+		<div id="authorize-div" style="display: none">
+			<span>Authorize access to Gmail API</span>
+			<!--Button for the user to click to initiate auth sequence -->
+			<button id="authorize-button" onclick="handleAuthClick(event)">
+				Authorize
+			</button>
+		</div>
+		<table style = "width:100%;">
+			<tr>
+				<td style = "width:30%;border:solid 1px;" valign = "top">
+					<div style = "height:500px;overflow:scroll;">
+						<p id = "status_loaded_emails"></p>
+						<ul id="output"></ul>
+					</div>
+				</td>
+				<td style = "width:70%;border:solid 1px;" valign = "top">
+					<div id = "email_content" style = "height:500px;overflow:scroll;">
+					</div>
+				</td>
+			</tr>
+		</table>
+		<br><br>
+		<p>Origins:</p>
+		<ul id = "origins">
+		</ul>
+	</body>
+</html>
